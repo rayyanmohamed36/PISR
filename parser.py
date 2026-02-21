@@ -750,7 +750,7 @@ def discover_file_groups(
         if not directory.exists():
             logger.warning("Directory does not exist: %s", directory)
             return
-        for pdf in sorted(directory.glob("*.pdf")):
+        for pdf in sorted(directory.glob("**/*.pdf")):
             resolved = _resolve_metadata(pdf, folder_hint)
             if resolved is None:
                 continue
@@ -801,7 +801,7 @@ def discover_from_single_folder(
 
     groups: dict[tuple[int, str, str], FileGroup] = {}
 
-    for pdf in sorted(resources_dir.glob("*.pdf")):
+    for pdf in sorted(resources_dir.glob("**/*.pdf")):
         resolved = _resolve_metadata(pdf, folder_hint="QP")  # hint is irrelevant; first-page wins
         if resolved is None:
             continue
@@ -829,7 +829,7 @@ def discover_from_single_folder(
     ordered = sorted(groups.values(), key=lambda g: (g.year, g.season, g.paper_code))
     logger.info(
         "Discovered %d file groups from single resources folder (%d PDFs).",
-        len(ordered), len(list(resources_dir.glob("*.pdf"))),
+        len(ordered), len(list(resources_dir.glob("**/*.pdf"))),
     )
     return ordered
 
