@@ -1,4 +1,4 @@
-# PISR — PDF-to-PostgreSQL Exam Bank Pipeline
+# PISR — Processing and Indexing System for Raisegrade
 
 A fully automated pipeline that processes years of PDF exam papers (Question Papers, Mark Schemes, Examiner Reports) into a single-table **PostgreSQL + pgvector** database with LLM-powered classification and semantic search.
 

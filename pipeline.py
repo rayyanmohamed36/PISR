@@ -101,6 +101,74 @@ def _dump_json(questions, path: Path) -> None:
         json.dump(data, f, indent=2)
 
 
+def _label_display(label: str) -> str:
+    """Convert internal label like 'a_ii' to displayable '(a)(ii)'."""
+    if label == "stem":
+        return "stem"
+    if "_" in label:
+        letter, roman = label.split("_", 1)
+        return f"({letter})({roman})"
+    return f"({label})"
+
+
+def _write_parsed_txt(questions, path: Path) -> None:
+    """Write all parsed questions and sub-parts to a human-readable txt file."""
+    sep = "=" * 80
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(f"PISR Parse Output — {len(questions)} questions\n")
+        f.write(f"{'=' * 80}\n\n")
+
+        for q in questions:
+            f.write(f"{sep}\n")
+            f.write(
+                f"  {q.year} {q.season} {q.paper_code}  —  "
+                f"Question {q.question_num}  ({q.total_marks} marks)"
+                f"  [{len(q.parts)} parts]\n"
+            )
+            f.write(f"{sep}\n\n")
+
+            if not q.parts:
+                # No sub-parts detected — show full text
+                f.write("  [QP]\n")
+                for line in q.question_text.splitlines():
+                    f.write(f"    {line}\n")
+                f.write("\n  [MS]\n")
+                for line in q.mark_scheme_text.splitlines():
+                    f.write(f"    {line}\n")
+                f.write("\n  [ER]\n")
+                for line in q.examiner_report_text.splitlines():
+                    f.write(f"    {line}\n")
+                f.write("\n")
+                continue
+
+            for sp in q.parts:
+                display = _label_display(sp.label)
+                marks_str = f"  ({sp.marks} mark{'s' if sp.marks != 1 else ''})" if sp.marks else ""
+                f.write(f"  ── Part {display}{marks_str} ──\n")
+
+                if sp.qp_text:
+                    f.write("  [QP]\n")
+                    for line in sp.qp_text.splitlines():
+                        f.write(f"    {line}\n")
+
+                if sp.ms_text:
+                    f.write("  [MS]\n")
+                    for line in sp.ms_text.splitlines():
+                        f.write(f"    {line}\n")
+
+                if sp.er_text:
+                    f.write("  [ER]\n")
+                    for line in sp.er_text.splitlines():
+                        f.write(f"    {line}\n")
+
+                if not any([sp.qp_text, sp.ms_text, sp.er_text]):
+                    f.write("    (no content)\n")
+
+                f.write("\n")
+
+            f.write("\n")
+
+
 # ── CLI ──────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -157,14 +225,29 @@ def main() -> None:
     if args.parse_only:
         from parser import parse_all
         questions = parse_all(qp, ms, er, resources_dir=resources)
-        print(f"\nParsed {len(questions)} questions:\n")
+        total_parts = sum(len(q.parts) for q in questions)
+        print(f"\nParsed {len(questions)} questions ({total_parts} sub-parts):\n")
         for q in questions:
             print(
                 f"  {q.year} {q.season} {q.paper_code} Q{q.question_num} "
-                f"({q.total_marks} marks) — "
+                f"({q.total_marks} marks, {len(q.parts)} parts) — "
                 f"QP:{len(q.question_text)}ch  MS:{len(q.mark_scheme_text)}ch  "
                 f"ER:{len(q.examiner_report_text)}ch"
             )
+            for sp in q.parts:
+                if sp.label == "stem":
+                    print(f"      ├─ [stem]  ({sp.marks}m)")
+                else:
+                    print(
+                        f"      ├─ ({_label_display(sp.label)})  "
+                        f"({sp.marks}m)  "
+                        f"QP:{len(sp.qp_text)}ch  MS:{len(sp.ms_text)}ch  ER:{len(sp.er_text)}ch"
+                    )
+
+        # Write detailed txt output
+        out_path = LOG_DIR / "parsed_output.txt"
+        _write_parsed_txt(questions, out_path)
+        print(f"\nDetailed output saved to {out_path}")
         return
 
     # Default: full pipeline
