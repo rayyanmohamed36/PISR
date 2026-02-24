@@ -12,6 +12,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import logging
 import sys
@@ -111,62 +112,42 @@ def _label_display(label: str) -> str:
     return f"({label})"
 
 
-def _write_parsed_txt(questions, path: Path) -> None:
-    """Write all parsed questions and sub-parts to a human-readable txt file."""
-    sep = "=" * 80
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(f"PISR Parse Output — {len(questions)} questions\n")
-        f.write(f"{'=' * 80}\n\n")
+def _write_parsed_csv(questions, path: Path) -> None:
+    """Write all parsed questions and sub-parts to a CSV file."""
+    fieldnames = [
+        "year", "season", "paper_code", "question", "part",
+        "marks", "question_text", "mark_scheme_text", "examiner_report_text",
+    ]
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
 
         for q in questions:
-            f.write(f"{sep}\n")
-            f.write(
-                f"  {q.year} {q.season} {q.paper_code}  —  "
-                f"Question {q.question_num}  ({q.total_marks} marks)"
-                f"  [{len(q.parts)} parts]\n"
-            )
-            f.write(f"{sep}\n\n")
-
             if not q.parts:
-                # No sub-parts detected — show full text
-                f.write("  [QP]\n")
-                for line in q.question_text.splitlines():
-                    f.write(f"    {line}\n")
-                f.write("\n  [MS]\n")
-                for line in q.mark_scheme_text.splitlines():
-                    f.write(f"    {line}\n")
-                f.write("\n  [ER]\n")
-                for line in q.examiner_report_text.splitlines():
-                    f.write(f"    {line}\n")
-                f.write("\n")
-                continue
-
-            for sp in q.parts:
-                display = _label_display(sp.label)
-                marks_str = f"  ({sp.marks} mark{'s' if sp.marks != 1 else ''})" if sp.marks else ""
-                f.write(f"  ── Part {display}{marks_str} ──\n")
-
-                if sp.qp_text:
-                    f.write("  [QP]\n")
-                    for line in sp.qp_text.splitlines():
-                        f.write(f"    {line}\n")
-
-                if sp.ms_text:
-                    f.write("  [MS]\n")
-                    for line in sp.ms_text.splitlines():
-                        f.write(f"    {line}\n")
-
-                if sp.er_text:
-                    f.write("  [ER]\n")
-                    for line in sp.er_text.splitlines():
-                        f.write(f"    {line}\n")
-
-                if not any([sp.qp_text, sp.ms_text, sp.er_text]):
-                    f.write("    (no content)\n")
-
-                f.write("\n")
-
-            f.write("\n")
+                writer.writerow({
+                    "year": q.year,
+                    "season": q.season,
+                    "paper_code": q.paper_code,
+                    "question": q.question_num,
+                    "part": "",
+                    "marks": f"{q.total_marks} marks",
+                    "question_text": q.question_text,
+                    "mark_scheme_text": q.mark_scheme_text,
+                    "examiner_report_text": q.examiner_report_text,
+                })
+            else:
+                for sp in q.parts:
+                    writer.writerow({
+                        "year": q.year,
+                        "season": q.season,
+                        "paper_code": q.paper_code,
+                        "question": q.question_num,
+                        "part": _label_display(sp.label),
+                        "marks": f"{sp.marks} marks",
+                        "question_text": sp.qp_text,
+                        "mark_scheme_text": sp.ms_text,
+                        "examiner_report_text": sp.er_text,
+                    })
 
 
 # ── CLI ──────────────────────────────────────────────────────────────────
@@ -192,7 +173,7 @@ def main() -> None:
 
     # Auto-detect: if resources/ has PDFs and no explicit --qp-dir etc., use it
     if resources is None and not any([args.qp_dir, args.ms_dir, args.er_dir]):
-        if RESOURCES_DIR.exists() and list(RESOURCES_DIR.glob("*.pdf")):
+        if RESOURCES_DIR.exists() and list(RESOURCES_DIR.glob("**/*.pdf")):
             resources = RESOURCES_DIR
             logger.info("Auto-detected resources/ folder with PDFs — using single-folder mode.")
 
@@ -244,10 +225,10 @@ def main() -> None:
                         f"QP:{len(sp.qp_text)}ch  MS:{len(sp.ms_text)}ch  ER:{len(sp.er_text)}ch"
                     )
 
-        # Write detailed txt output
-        out_path = LOG_DIR / "parsed_output.txt"
-        _write_parsed_txt(questions, out_path)
-        print(f"\nDetailed output saved to {out_path}")
+        # Write CSV output
+        out_path = LOG_DIR / "parsed_output.csv"
+        _write_parsed_csv(questions, out_path)
+        print(f"\nCSV output saved to {out_path}")
         return
 
     # Default: full pipeline

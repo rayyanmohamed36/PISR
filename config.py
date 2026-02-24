@@ -32,7 +32,8 @@ DATABASE_URL: str = os.getenv(
 
 # ── OpenAI ───────────────────────────────────────────────────────────────
 OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
-EMBEDDING_MODEL: str = "text-embedding-3-small"   # 1536-dim
+EMBEDDING_MODEL: str = "text-embedding-3-large"   # 3072-dim native, reduced to 2000 for pgvector
+EMBEDDING_DIMENSIONS: int = 2000                   # pgvector HNSW max = 2000
 CLASSIFIER_MODEL: str = "gpt-4o-mini"             # cheap & fast for classification
 
 # ── Pipeline tuning ─────────────────────────────────────────────────────

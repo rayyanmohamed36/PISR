@@ -37,7 +37,7 @@ A fully automated pipeline that processes years of PDF exam papers (Question Pap
 
 ## Features
 
-- **Triple-stream sync** — matches QP, MS, and ER files by filename, then merges Question N across all three documents into a single record.
+- **Triple-stream sync** — matches QP, MS, and ER files by searching the pages for a year and month, then merges Question N across all three documents into a single record.
 - **Boilerplate removal** — strips headers, footers, page numbers, "Turn Over" notices, and other noise via 14 regex patterns.
 - **Mismatch detection** — logs errors when the question count in a Mark Scheme doesn't match the Question Paper.
 - **LLM classification** — sends each question to GPT-4o-mini to pick the best Topic > Subtopic from a configurable taxonomy.

@@ -3,7 +3,7 @@ enrichment.py — Automated Enrichment Layer
 
 Uses OpenAI to:
   1. Classify each question into Topic > Subtopic from the taxonomy.
-  2. Generate a 1536-dim embedding of the combined (Q + MS + ER) text.
+  2. Generate a 2000-dim embedding of the combined (Q + MS + ER) text.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from config import (
     ALL_TOPICS,
     CLASSIFIER_MODEL,
     EMBEDDING_BATCH,
+    EMBEDDING_DIMENSIONS,
     EMBEDDING_MODEL,
     LOG_DIR,
     MAX_RETRIES,
@@ -124,7 +125,7 @@ def _combine_text(q: ParsedQuestion) -> str:
 def embed_texts(texts: list[str]) -> list[list[float]]:
     """
     Generate embeddings for a list of texts in batches.
-    Returns a list of 1536-dim float vectors.
+    Returns a list of 2000-dim float vectors.
     """
     all_embeddings: list[list[float]] = []
 
@@ -135,6 +136,7 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
                 resp = client.embeddings.create(
                     model=EMBEDDING_MODEL,
                     input=batch,
+                    dimensions=EMBEDDING_DIMENSIONS,
                 )
                 batch_embeddings = [item.embedding for item in resp.data]
                 all_embeddings.extend(batch_embeddings)
@@ -156,7 +158,7 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
                 "Embedding failed for batch %d–%d. Filling with zeros.",
                 i, i + len(batch) - 1,
             )
-            all_embeddings.extend([[0.0] * 1536] * len(batch))
+            all_embeddings.extend([[0.0] * 2000] * len(batch))
 
     return all_embeddings
 
@@ -164,7 +166,7 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
 def embed_single(text: str) -> list[float]:
     """Convenience: embed a single string."""
     result = embed_texts([text])
-    return result[0] if result else [0.0] * 1536
+    return result[0] if result else [0.0] * 2000
 
 
 # ── Orchestration: enrich a batch of ParsedQuestions ─────────────────────
@@ -173,7 +175,7 @@ def enrich_questions(questions: list[ParsedQuestion]) -> list[ParsedQuestion]:
     """
     For each ParsedQuestion:
       1. Classify → topic, subtopic
-      2. Embed combined text → 1536-dim vector
+      2. Embed combined text → 2000-dim vector
     Mutates in place and returns the same list.
     """
     logger.info("Enriching %d questions …", len(questions))

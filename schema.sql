@@ -24,8 +24,8 @@ CREATE TABLE IF NOT EXISTS exam_bank (
     mark_scheme_text     TEXT NOT NULL DEFAULT '',
     examiner_report_text TEXT NOT NULL DEFAULT '',
 
-    -- embedding (OpenAI text-embedding-3-small → 1536 dimensions)
-    embedding       vector(1536),
+    -- embedding (OpenAI text-embedding-3-large → 2000 dimensions)
+    embedding       vector(2000),
 
     -- prevent accidental duplicates
     UNIQUE (year, season, paper_code, question_num)

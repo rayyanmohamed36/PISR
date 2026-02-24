@@ -119,7 +119,7 @@ QUESTION_SPLIT_RE = re.compile(
         r"([1-9])"                       # single digit only    → group(3)
         r"\s+"
         r"(?![A-Z][a-z]+\s+\d{4})"      #   NOT followed by month + year (date)
-        r"[A-Z][a-z]"                    #   start of a sentence "1 As We…"
+        r"[A-Z][a-zA-Z]"                 #   start of a sentence "1 As We…" or "4 AWG…"
     r")"
     ,
     re.MULTILINE,
@@ -143,7 +143,7 @@ MS_QUESTION_SPLIT_RE = re.compile(
         r"([1-9])"                       # → group(3)
         r"\s+"
         r"(?![A-Z][a-z]+\s+\d{4})"
-        r"[A-Z][a-z]"
+        r"[A-Z][a-zA-Z]"                 # sentence start (mixed or all caps)
     r")"
     ,
     re.MULTILINE,
@@ -344,6 +344,80 @@ SUBPART_MARKER_ER_RE = re.compile(
 )
 
 
+# Regex that matches a marks indicator: standalone "(N)" on a line
+_MARKS_LINE_RE = re.compile(r"^\s*\(\d{1,2}\)\s*$")
+# MCQ option line: "A ...", "B ...", etc.
+_MCQ_OPTION_RE = re.compile(r"^\s*[A-D]\s+\S")
+
+
+def _strip_trailing_context(part_text: str) -> tuple[str, str]:
+    """
+    Split a sub-part's text into (own_content, trailing_context).
+
+    In Pearson QP papers the contextual paragraph introducing the *next*
+    sub-part often appears after the current part's answer area.  We
+    detect the last marks indicator "(N)" or MCQ option and treat any
+    substantive text after that as trailing context belonging to the
+    next part.
+
+    Returns (trimmed_text, trailing_context).  trailing_context is ""
+    if nothing should be moved.
+    """
+    lines = part_text.split("\n")
+    last_anchor = -1   # index of last marks indicator or MCQ option
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if _MARKS_LINE_RE.match(stripped):
+            last_anchor = i
+        elif _MCQ_OPTION_RE.match(stripped) and len(stripped.split()) <= 10:
+            # Real MCQ options are short (≤10 words).  A line like
+            # "A business has fixed costs …" starts with "A " but is
+            # actually a contextual sentence, not an option.
+            last_anchor = i
+
+    if last_anchor == -1:
+        return part_text, ""
+
+    # Everything after the last anchor
+    tail_lines = lines[last_anchor + 1:]
+    # Only consider non-empty lines
+    substantive = [l for l in tail_lines if l.strip()]
+    if not substantive:
+        return part_text, ""
+
+    # Check if the tail looks like contextual intro (multi-word sentences,
+    # not just marks or options or short fragments)
+    real_context: list[str] = []
+    for l in substantive:
+        s = l.strip()
+        # Skip empty-ish or marks-only lines
+        if not s or _MARKS_LINE_RE.match(s):
+            continue
+        # If a line has 3+ words, it's likely contextual prose
+        if len(s.split()) >= 3:
+            real_context.append(s)
+
+    if not real_context:
+        return part_text, ""
+
+    # Find where the trailing context starts in the original lines
+    # (first substantive context line after last_anchor)
+    first_ctx_line = None
+    for i in range(last_anchor + 1, len(lines)):
+        s = lines[i].strip()
+        if s and len(s.split()) >= 3 and not _MARKS_LINE_RE.match(s):
+            first_ctx_line = i
+            break
+
+    if first_ctx_line is None:
+        return part_text, ""
+
+    trimmed = "\n".join(lines[:first_ctx_line]).rstrip()
+    trailing = "\n".join(lines[first_ctx_line:]).strip()
+    return trimmed, trailing
+
+
 def _subpart_sort_key(label: str) -> tuple:
     """Sort key for sub-part labels: stem < a < a_i < a_ii < … < b < …"""
     if label == "stem":
@@ -430,6 +504,8 @@ def _split_into_subparts(
     if stem:
         parts["stem"] = stem
 
+    # First pass: extract raw text slices for each marker
+    raw_slices: list[tuple[str, str]] = []   # (label, text)
     for i, (pos, label) in enumerate(markers):
         end_pos = markers[i + 1][0] if i + 1 < len(markers) else len(text)
         part_text = text[pos:end_pos].strip()
@@ -440,10 +516,39 @@ def _split_into_subparts(
             part_text, flags=re.IGNORECASE | re.DOTALL,
         ).strip()
 
+        raw_slices.append((label, part_text))
+
+    # Second pass: move trailing contextual intro text from the end of
+    # one part to the stem of the next.  In Pearson QP papers the
+    # introductory paragraph for the next sub-part often sits *before*
+    # the sub-part marker, which means our first pass assigns it to the
+    # wrong part.
+    #
+    # Heuristic: after the last marks indicator "(N)" or the last MCQ
+    # option line (e.g. "A …", "B …", "C …", "D …"), any remaining
+    # multi-word sentence lines are contextual intro for the next part.
+    processed_slices: list[tuple[str, str]] = []
+    for idx, (label, part_text) in enumerate(raw_slices):
+        trimmed, trailing = _strip_trailing_context(part_text)
+        processed_slices.append((label, trimmed))
+        # Prepend the trailing context to the NEXT part as extra stem
+        if trailing and idx + 1 < len(raw_slices):
+            next_label, next_text = raw_slices[idx + 1]
+            raw_slices[idx + 1] = (next_label, next_text)
+            # Store separately so the next part's own text isn't altered;
+            # instead prepend to processed output.
+            parts.setdefault("_trailing_ctx", {})
+            parts["_trailing_ctx"][next_label] = trailing  # type: ignore[union-attr]
+
+    # Build final parts dict
+    trailing_ctx = parts.pop("_trailing_ctx", {})
+    for label, part_text in processed_slices:
+        ctx = trailing_ctx.get(label, "")  # type: ignore[union-attr]
+        final = (ctx + "\n" + part_text).strip() if ctx else part_text
         if label in parts:
-            parts[label] += "\n" + part_text
+            parts[label] += "\n" + final
         else:
-            parts[label] = part_text
+            parts[label] = final
 
     return parts
 

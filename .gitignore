@@ -28,7 +28,7 @@ Thumbs.db
 *.swp
 *.swo
 
-# PDF resources (large files — don't commit)
+# PDF resources
 resources/
 QP/
 MS/
